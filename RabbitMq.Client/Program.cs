@@ -71,24 +71,11 @@ namespace RabbitMq.Client
             //ThreadPool.SetMaxThreads(50, 2000);
 
             int threadCount = 2;// Environment.ProcessorCount;
-            int repeatCount = 100000000;
-            bool startOtherApp = false;
+
             if (args.Length > 0)
             {
                 threadCount = int.Parse(args[0]);
             }
-            if (args.Length > 1)
-            {
-                repeatCount = int.Parse(args[1]);
-            }
-            if (args.Length > 2)
-            {
-                if (!string.IsNullOrEmpty(args[2]) && args[2] == "1")
-                {
-                    startOtherApp = true;
-                }
-            }
-
 
             try
             {
