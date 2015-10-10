@@ -73,7 +73,7 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Conejo\Conejo.csproj">
+    <ProjectReference Include="..\Conejo\Conejo\Conejo.csproj">
       <Project>{fba11efa-5f50-4933-b2d1-b6b5482d7ee5}</Project>
       <Name>Conejo</Name>
     </ProjectReference>
