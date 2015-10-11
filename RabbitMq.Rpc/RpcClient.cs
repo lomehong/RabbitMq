@@ -7,17 +7,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Management;
 using System.Text;
-using System.Threading;
+using System.Threading.Tasks;
 
-namespace RabbitMq.Client
+namespace RabbitMq.Rpc
 {
-    /// <summary>
-    /// <para>功能：</para>
-    /// <para>作者：hz0704027 </para>
-    /// <para>日期：2015/10/10 13:58:02 </para>
-    /// <para>备注：本代码版权归慧择网所有，严禁外传 </para>
-    /// </summary>
-	public class RpcClient : IRpcClient
+    public class RpcClient : IRpcClient
     {
         /// <summary>
         /// 日志
@@ -36,7 +30,7 @@ namespace RabbitMq.Client
         {
             get
             {
-                if(null==_current)
+                if (null == _current)
                 {
                     _current = new RpcClient();
                 }
@@ -147,8 +141,8 @@ namespace RabbitMq.Client
 
         public TMessage Call<TMessage>(string serviceId, string interfaceId, string method, params object[] p)
         {
-          //  var result = default(TMessage);
-           // string queue = "ping";
+            //  var result = default(TMessage);
+            // string queue = "ping";
 
             //Channel currentChannel;
             //ChannelPool.TryGetValue(Thread.CurrentThread.ManagedThreadId, out currentChannel);
@@ -170,7 +164,7 @@ namespace RabbitMq.Client
             //var response = ChannelPool[Thread.CurrentThread.ManagedThreadId].Call<Request, Response>(new Request { Text = "hai" });
 
             //var response = CurrentChannel().Call<Request, Response>(new Request { Text = "hai" });
-            return Current.InternalCall<TMessage>(serviceId,interfaceId,method, p);
+            return Current.InternalCall<TMessage>(serviceId, interfaceId, method, p);
         }
 
         private TMessage InternalCall<TMessage>(string serviceId, string interfaceId, string method, params object[] p)
@@ -189,73 +183,6 @@ namespace RabbitMq.Client
         public void Excute(string serviceId, string interfaceId, string method, params object[] p)
         {
             throw new NotImplementedException();
-        }
-    }
-
-    /// <summary>
-    /// RabbitMq连接管理类
-    /// </summary>
-    public class DictionaryBasedKeyLockEngine
-    {
-        private static readonly object SyncRoot = new object();
-        private static readonly Dictionary<string, LockUnit> Locks = new Dictionary<string, LockUnit>();
-
-        private static Connection _connection = null;
-
-        public DictionaryBasedKeyLockEngine()
-        {
-            _connection =
-                Connection.Create(x => x
-                .ConnectTo("localhost", "/")
-                .WithCredentials("guest", "guest"));
-        }
-        public void Invoke(string key, Func<Channel, Result<Response>> act)
-        {
-            LockUnit lockUnit;
-
-            lock (SyncRoot)
-            {
-                if (Locks.TryGetValue(key, out lockUnit))
-                {
-                    lockUnit.CallCount++;
-                }
-                else
-                {
-                    lockUnit = new LockUnit();
-                    lockUnit.Channel = Channel.Create(_connection, x => x
-                                         .ThroughDirectExchange("rpc")
-                                             .WithRoutingKey("ping"));
-                    Locks.Add(key, lockUnit);
-                }
-            }
-
-            try
-            {
-                Monitor.Enter(lockUnit);
-                act(lockUnit.Channel);
-            }
-            finally
-            {
-                lock (SyncRoot)
-                {
-                    lockUnit.InUse = false;
-                }
-                Monitor.Exit(lockUnit);
-            }
-        }
-
-        private class LockUnit
-        {
-            public Channel Channel;
-            /// <summary>
-            /// 被调用次数
-            /// </summary>
-            public long CallCount;
-
-            /// <summary>
-            /// 是否正在使用中
-            /// </summary>
-            public bool InUse;
         }
     }
 }

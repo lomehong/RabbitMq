@@ -1,6 +1,8 @@
 ﻿using Conejo;
 using RabbitMq.Common;
 using RabbitMq.Common.Logger;
+using RabbitMq.Common.Rpc;
+using RabbitMq.Rpc;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -20,6 +22,7 @@ namespace RabbitMq.Client
 
         private static Connection _connection = null;
         private static Channel _client = null;
+        static IRpcClient _rpcClient = null;
 
         /// <summary>
         /// Channel池
@@ -59,6 +62,8 @@ namespace RabbitMq.Client
                 .ConnectTo("localhost", "/")
                 .WithCredentials("guest", "guest"));
 
+            _rpcClient = new RpcClient();
+
             //_client =
             //    Channel.Create(_connection, x => x
             //        .ThroughDirectExchange("rpc")
@@ -70,7 +75,7 @@ namespace RabbitMq.Client
             //ThreadPool.GetMaxThreads(out ii, out j);//25,1000
             //ThreadPool.SetMaxThreads(50, 2000);
 
-            int threadCount = 2;// Environment.ProcessorCount;
+            int threadCount = 3;// Environment.ProcessorCount;
 
             if (args.Length > 0)
             {
@@ -129,7 +134,7 @@ namespace RabbitMq.Client
 
         static void Execute1()
         {
-            RabbitMq.Common.Rpc.IRpcClient client = new RabbitMq.Client.RpcClient();
+            IRpcClient client = new RpcClient();
             client.Call<Response>("ping", "abc", "ddd");
             Interlocked.Increment(ref tps);
         }
