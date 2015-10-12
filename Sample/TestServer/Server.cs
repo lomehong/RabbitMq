@@ -15,25 +15,38 @@ namespace TestServer
     {
         static void Main(string[] args)
         {
-            using (IConnection conn = new ConnectionFactory().CreateConnection())
-            {
-                using (var ch = conn.CreateModel())
-                {
-                    ch.ExchangeDeclare(Helper.ExchangeName, "direct");
-                    var queuename = ch.EnsureQueue();
-                   
-                    var subscription = new Subscription(ch, queuename);
+            //using (IConnection conn = new ConnectionFactory().CreateConnection())
+            //{
+            //    using (var ch = conn.CreateModel())
+            //    {
+            //        ch.ExchangeDeclare(Helper.ExchangeName, "direct");
+            //        var queuename = ch.EnsureQueue();
 
-                    new MySimpleRpcServerSubclass(subscription).MainLoop();
-                }
-            }
+            //        var subscription = new Subscription(ch, queuename);
+
+            //        new MySimpleRpcServerSubclass(subscription).MainLoop();
+            //    }
+            //}
+
+            Thread t1 = new Thread(new ParameterizedThreadStart(CreateService));
+            t1.Start("1");
+            Thread t2 = new Thread(new ParameterizedThreadStart(CreateService));
+            t2.Start("2");
+
+        }
+
+        static void CreateService(object queue)
+        {
+            MyService server = new MyService();
+            server.CreateService(queue.ToString());
         }
     }
-    
+
     internal class MySimpleRpcServerSubclass : SimpleRpcServer
     {
-        public MySimpleRpcServerSubclass(Subscription subscription) 
-            : base(subscription) { }
+        public MySimpleRpcServerSubclass(Subscription subscription)
+            : base(subscription)
+        { }
 
         public override byte[] HandleSimpleCall(bool isRedelivered, IBasicProperties requestProperties, byte[] body, out IBasicProperties replyProperties)
         {
@@ -45,7 +58,7 @@ namespace TestServer
             //            {
             //                Message = String.Format("Got message {0} with body-text {1}", m.Name, m.Body)
             //            };
-          //  Console.WriteLine("workload arrived {0}", m.Body);
+            //  Console.WriteLine("workload arrived {0}", m.Body);
 
             return body;
         }

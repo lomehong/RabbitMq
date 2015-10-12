@@ -17,23 +17,51 @@ namespace TestClient
     {
         static IConnection _connection;
         static IModel _channel;
+        static Dictionary<string, SimpleRpcClient> _rpcClientDictionary = new Dictionary<string, SimpleRpcClient>();
         static SimpleRpcClient _client;
+        static object lok = new object();
+
+        private SimpleRpcClient GetRpcClientByQueue(string queue)
+        {
+            SimpleRpcClient client;
+            _rpcClientDictionary.TryGetValue(queue, out client);
+
+            if (null == client)
+            {
+                client = new SimpleRpcClient(new ConnectionFactory
+                {
+                    HostName = "localhost",
+                    UserName = "guest",
+                    Password = "guest",
+                    Port = 5672,
+                    VirtualHost = "/"
+                }.CreateConnection().CreateModel(), queue)
+                {
+                    TimeoutMilliseconds = 4000
+                };
+
+                client.TimedOut += TimedOutHandler;
+                client.Disconnected += DisconnectedHandler;
+
+                _rpcClientDictionary.Add(queue, client);
+            }
+            return client;
+        }
 
         static IConnection GetConnection
         {
             get
             {
-                if(null== _connection)
+                if (null == _connection)
                 {
-                    ConnectionFactory factory = new ConnectionFactory
+                    _connection = new ConnectionFactory
                     {
                         HostName = "localhost",
                         UserName = "guest",
                         Password = "guest",
                         Port = 5672,
                         VirtualHost = "/"
-                    };
-                    _connection = factory.CreateConnection();
+                    }.CreateConnection();
                 }
 
                 return _connection;
@@ -46,7 +74,7 @@ namespace TestClient
             {
                 if (null == _client)
                 {
-                    if(null == _channel)
+                    if (null == _channel)
                     {
                         _channel = GetConnection.CreateModel();
                     }
@@ -74,11 +102,16 @@ namespace TestClient
             Console.WriteLine("Timeout");
         }
 
-        public void Call()
+        public void Call(string queue)
         {
-            //IBasicProperties replyProp;
-            //IBasicProperties prop = _channel.CreateBasicProperties();
-            GetClient.Call(Encoding.UTF8.GetBytes("test"));
+            if (string.IsNullOrWhiteSpace(queue))
+            {
+                return;
+            }
+
+            //这里必须上锁，否则在多线程环境下回报“Pipelining of requests forbidden”异常
+            lock (lok)
+            GetRpcClientByQueue(queue).Call(Encoding.UTF8.GetBytes("test"));
         }
     }
 }

@@ -34,7 +34,7 @@ namespace TestClient
             Thread tpst = new Thread(new ThreadStart(OutputTps));
             tpst.Start();
 
-            for (var i = 0; i < 1; i++)
+            for (var i = 0; i < 5; i++)
             {
                 Task.Factory.StartNew(FearchDoWork);
             }
@@ -104,7 +104,9 @@ namespace TestClient
             //}
 
             MyClient client = new MyClient();
-            client.Call();
+            client.Call("1");
+            Interlocked.Increment(ref tps);
+            client.Call("2");
             Interlocked.Increment(ref tps);
         }
 
