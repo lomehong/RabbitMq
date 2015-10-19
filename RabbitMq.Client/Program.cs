@@ -29,7 +29,7 @@ namespace RabbitMq.Client
             logger = new EmptyLogger();
 
             _rpcClient = new RpcClient();
-            int threadCount = 1;// Environment.ProcessorCount;
+            int threadCount = 2;// Environment.ProcessorCount;
 
             if (args.Length > 0)
             {
@@ -45,6 +45,7 @@ namespace RabbitMq.Client
                 for (var i = 0; i < threadCount; i++)
                 {
                     Task.Factory.StartNew(FearchDoWork);
+                    Thread.Sleep(1);
                     //new Thread(new ThreadStart(FearchDoWork)).Start();
                     
                 }
@@ -94,7 +95,7 @@ namespace RabbitMq.Client
         }
         static bool Execute()
         {
-            var response = _rpcClient.Call<string>("abc", string.Empty, string.Empty);
+            var response = _rpcClient.Call<string>("rpc_queue", string.Empty, string.Empty);
             Interlocked.Increment(ref tps);
 
             return true;

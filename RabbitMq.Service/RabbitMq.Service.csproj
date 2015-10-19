@@ -32,6 +32,10 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="RabbitMQ.Client, Version=3.4.3.0, Culture=neutral, PublicKeyToken=89e7d7c5feba84ce, processorArchitecture=MSIL">
+      <HintPath>..\packages\RabbitMQ.Client.3.4.3\lib\net35\RabbitMQ.Client.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
@@ -47,12 +51,12 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
+    <None Include="packages.config" />
+    <None Include="Config\rabbitmq.config">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Conejo\Conejo\Conejo.csproj">
-      <Project>{fba11efa-5f50-4933-b2d1-b6b5482d7ee5}</Project>
-      <Name>Conejo</Name>
-    </ProjectReference>
     <ProjectReference Include="..\RabbitMq.Common\RabbitMq.Common.csproj">
       <Project>{1a15a3ca-a340-4e77-9ed5-a5fcad0bec24}</Project>
       <Name>RabbitMq.Common</Name>
@@ -60,6 +64,10 @@
     <ProjectReference Include="..\RabbitMq.Logger\RabbitMq.Logger.csproj">
       <Project>{b8a8f588-fab0-45ed-9643-7f4954c254d1}</Project>
       <Name>RabbitMq.Logger</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\RabbitMq.Rpc\RabbitMq.Rpc.csproj">
+      <Project>{8b37a9a3-16fc-45fc-9eda-624d398c6c67}</Project>
+      <Name>RabbitMq.Rpc</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

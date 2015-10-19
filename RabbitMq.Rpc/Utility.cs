@@ -1,5 +1,7 @@
-﻿using System;
+﻿using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.ServiceModel;
 using System.Text;
@@ -16,6 +18,12 @@ namespace RabbitMq.Rpc
     /// </summary>
 	public static class Utility
     {
+        public static RabbitMqConfig GetRabbitMqConfig()
+        {
+            var rabbitmqJson = File.ReadAllText(GetBinFolder() + "Config\\rabbitmq.config");
+            var rabbitMqConfig = JsonConvert.DeserializeObject<RabbitMqConfig>(rabbitmqJson);
+            return rabbitMqConfig;
+        }
         /// <summary>
         /// 根据应用程序类型获取友好的应用程序名称（主要是文件夹的名称）
         /// </summary>

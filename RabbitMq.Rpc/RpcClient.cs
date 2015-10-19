@@ -7,6 +7,7 @@ using RabbitMQ.Client.Framing.Impl;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Management;
 using System.Text;
@@ -34,7 +35,6 @@ namespace RabbitMq.Rpc
 
         readonly ConcurrentDictionary<string, BlockingCollection<string>> _callBackQueue = new ConcurrentDictionary<string, BlockingCollection<string>>();
 
-        QueueingBasicConsumer consumer;
 
         /// <summary>
         /// 接收回调消息的Channel
@@ -53,9 +53,17 @@ namespace RabbitMq.Rpc
             logger = new EmptyLogger();
             this.tokenSource = new CancellationTokenSource();
 
-            var factory = new ConnectionFactory() { HostName = "localhost" };
+            var rabbitMqConfig = Utility.GetRabbitMqConfig();
+            var factory = new ConnectionFactory()
+            {
+                HostName = rabbitMqConfig.HostName,
+                UserName = rabbitMqConfig.UserName,
+                Password = rabbitMqConfig.Password,
+                Port = rabbitMqConfig.Port,
+                VirtualHost = rabbitMqConfig.VirtualHost
+            };
             _connection = factory.CreateConnection();
-            _publishChannel = _connection.CreateModel();
+            
 
             replyTo = "RpcCallBack_" + Utility.GetFriendlyApplicationName();
 
@@ -68,7 +76,7 @@ namespace RabbitMq.Rpc
         /// </summary>
         private void ReceiveCallBack()
         {
-            for (var i = 0; i < 1; i++)
+            for (var i = 0; i < 10; i++)
             {
                 new Thread(new ThreadStart(StartReceive)).Start();
             }
@@ -77,14 +85,13 @@ namespace RabbitMq.Rpc
         private void StartReceive()
         {
             IModel _receivechannel = _connection.CreateModel();
-            consumer = new QueueingBasicConsumer(_receivechannel);
+            QueueingBasicConsumer consumer = new QueueingBasicConsumer(_receivechannel);
             _receivechannel.QueueDeclare(replyTo, false, false, false, null);
-            _receivechannel.BasicQos(1, 1, false);
+            _receivechannel.BasicQos(0, 1, false);
             _receivechannel.BasicConsume(replyTo, false, consumer);
             while (!this.tokenSource.IsCancellationRequested)
             {
-                BasicDeliverEventArgs message = null;
-                consumer.Queue.Dequeue(1000, out message);
+                BasicDeliverEventArgs message = (BasicDeliverEventArgs)consumer.Queue.Dequeue();
                 if (null == message)
                 {
                     continue;
@@ -108,15 +115,20 @@ namespace RabbitMq.Rpc
             }
             if (null != _publishChannel)
             {
+                //Stopwatch st = new Stopwatch();
+                //st.Start();
                 string corrId = string.Empty;
                 try
                 {
                     var localmessage = "hello";
-                    var body = Encoding.UTF8.GetBytes(localmessage);
+                    byte[] body = new byte[1024 * 2];// Encoding.UTF8.GetBytes(localmessage);
 
                     var properties = _publishChannel.CreateBasicProperties();
                     corrId = Guid.NewGuid().ToString();
                     _callBackQueue.TryAdd(corrId, new BlockingCollection<string>(1));
+                    //st.Stop();
+                    //this.logger.Debug("Add" + st.ElapsedMilliseconds);
+                    //st.Start();
                     properties.CorrelationId = corrId;
                     properties.ContentEncoding = "UTF-8";
                     properties.ReplyTo = replyTo;
@@ -126,8 +138,12 @@ namespace RabbitMq.Rpc
                     // st.Start();
 #endif
                     _publishChannel.BasicPublish(string.Empty, queue, properties, body);
-
+                    //st.Stop();
+                    //this.logger.Debug("Publish" + st.ElapsedMilliseconds);
+                    //st.Start();
                     var stringResult = _callBackQueue[corrId].Take();
+                    //st.Stop();
+                    //this.logger.Debug("Take" + st.ElapsedMilliseconds);
                     //this.logger.DebugFormat(stringResult);
 #if DEBUG
                     //  st.Stop();

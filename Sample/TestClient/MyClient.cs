@@ -124,7 +124,7 @@ namespace TestClient
                     IBasicProperties replyProp;
                     IBasicProperties prop = channel.CreateBasicProperties();
                     prop.ContentEncoding = "UTF-8";
-                    MyRpcClient.Current( new MyRpcClient(channel, queue).Call(prop, Encoding.UTF8.GetBytes("test"), out replyProp);
+                    MyRpcClient.Current( new MyRpcClient(channel, queue).Call(prop, Encoding.UTF8.GetBytes("test"), out replyProp));
                 }
             }
         }
