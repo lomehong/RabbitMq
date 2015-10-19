@@ -20,36 +20,7 @@ namespace RabbitMq.Client
         /// </summary>
         private static ILogger logger = null;
 
-        private static Connection _connection = null;
-        private static Channel _client = null;
-        static IRpcClient _rpcClient = null;
-
-        /// <summary>
-        /// Channel池
-        /// </summary>
-        private static Dictionary<int, Channel> _channelPool;
-
-        /// <summary>
-        /// 获取Channel池
-        /// </summary>
-        private static Dictionary<int, Channel> ChannelPool
-        {
-            get
-            {
-                if (null == _channelPool)
-                {
-                    _channelPool = new Dictionary<int, Channel>();
-                }
-                return _channelPool;
-            }
-            set
-            {
-                if (null == _channelPool)
-                {
-                    _channelPool = new Dictionary<int, Channel>();
-                }
-            }
-        }
+        static IRpcClient _rpcClient;
 
         private static long tps = 0;
 
@@ -57,25 +28,8 @@ namespace RabbitMq.Client
         {
             logger = new EmptyLogger();
 
-            _connection =
-                Connection.Create(x => x
-                .ConnectTo("localhost", "/")
-                .WithCredentials("guest", "guest"));
-
             _rpcClient = new RpcClient();
-
-            //_client =
-            //    Channel.Create(_connection, x => x
-            //        .ThroughDirectExchange("rpc")
-            //            .WithRoutingKey("ping"));
-
-            //int ii = 0;
-            //int j = 0;
-
-            //ThreadPool.GetMaxThreads(out ii, out j);//25,1000
-            //ThreadPool.SetMaxThreads(50, 2000);
-
-            int threadCount = 3;// Environment.ProcessorCount;
+            int threadCount = 1;// Environment.ProcessorCount;
 
             if (args.Length > 0)
             {
@@ -125,8 +79,8 @@ namespace RabbitMq.Client
             Console.WriteLine("[" + Thread.CurrentThread.ManagedThreadId + "]线程启动。");
             while (true)
             {
-                //Execute();
-                 Execute1();
+                Execute();
+                // Execute1();
                 // LocalTest();
             }
         }
@@ -135,60 +89,15 @@ namespace RabbitMq.Client
         static void Execute1()
         {
             IRpcClient client = new RpcClient();
-            client.Call<Response>("ping", "abc", "ddd");
+            client.Call<Response>("remoting-examples-server", "com.hzins.remoting.example.api.facade.UserFacade", "getUserName", long.Parse("1"));
             Interlocked.Increment(ref tps);
         }
         static bool Execute()
         {
-            Connection currentConnection;
-            Channel currentChannel;
-            ChannelPool.TryGetValue(Thread.CurrentThread.ManagedThreadId, out currentChannel);
-            if (null == currentChannel)
-            {      
-                //currentConnection =
-                //    Connection.Create(x => x
-                //    .ConnectTo("localhost", "/")
-                //    .WithCredentials("guest", "guest"));
-
-
-                ChannelPool.Add(Thread.CurrentThread.ManagedThreadId, Channel.Create(_connection, x => x
-                        .ThroughDirectExchange("rpc")
-                            .WithRoutingKey("ping")));
-                Console.WriteLine(Thread.CurrentThread.ManagedThreadId + "不存在，将创建");
-                ChannelPool.TryGetValue(Thread.CurrentThread.ManagedThreadId, out currentChannel);
-            }
-            // Stopwatch st = new Stopwatch();
-            //st.Start();
-            //using (Channel client =
-            //    Channel.Create(_connection, x => x
-            //        .ThroughDirectExchange("rpc")
-            //            .WithRoutingKey("ping")))
-            //{
-
-            var response = ChannelPool[Thread.CurrentThread.ManagedThreadId].Call<Request, Response>(new Request { Text = "hai" });
-            //var response = client.Call<Request, Response>(new Request { Text = "hai" });
+            var response = _rpcClient.Call<string>("abc", string.Empty, string.Empty);
             Interlocked.Increment(ref tps);
-            //}
-           // st.Stop();
-            //if (st.ElapsedMilliseconds > 50)
-            //{
-            //    logger.Debug("Call调用耗时：" + st.ElapsedMilliseconds);
-            //}
 
             return true;
-        }
-
-        static void LocalTest()
-        {
-            Task<string> mainTask = new Task<string>(() =>
-            {
-                Thread.Sleep(5);
-                Interlocked.Increment(ref tps);
-                return "[" + Thread.CurrentThread.ManagedThreadId + "]test";                
-            });
-            mainTask.Start();
-            var tmp = mainTask.Result;
-           // Console.WriteLine(mainTask.Result);
         }
     }
 }

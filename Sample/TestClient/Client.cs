@@ -20,21 +20,11 @@ namespace TestClient
         //README: set TestClient and TestServer both as startup projects, then hit F5
         static void Main(string[] args)
         {
-            ConnectionFactory factory = new ConnectionFactory
-            {
-                HostName = "localhost",
-                UserName = "guest",
-                Password = "guest",
-                Port = 5672,
-                VirtualHost = "/"
-            };
-            _connection = factory.CreateConnection();
-
             // 起一个线程输出TPS
             Thread tpst = new Thread(new ThreadStart(OutputTps));
             tpst.Start();
 
-            for (var i = 0; i < 5; i++)
+            for (var i = 0; i < 1; i++)
             {
                 Task.Factory.StartNew(FearchDoWork);
             }

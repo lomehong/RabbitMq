@@ -1,12 +1,16 @@
-﻿using Conejo;
-using RabbitMq.Common;
+﻿using RabbitMq.Common;
 using RabbitMq.Common.Logger;
 using RabbitMq.Common.Rpc;
+using RabbitMQ.Client;
+using RabbitMQ.Client.Events;
+using RabbitMQ.Client.Framing.Impl;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Management;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace RabbitMq.Rpc
@@ -18,166 +22,125 @@ namespace RabbitMq.Rpc
         /// </summary>
         private readonly ILogger logger = null;
 
-        private static Connection _connection = null;
-        private static Channel _client = null;
+        private static IConnection _connection = null;
 
         private static object lok = new object();
-        private static bool isInitChannel = false;
-
-        private static RpcClient _current;
-
-        private static RpcClient Current
-        {
-            get
-            {
-                if (null == _current)
-                {
-                    _current = new RpcClient();
-                }
-
-                return _current;
-            }
-        }
 
         /// <summary>
-        /// 最大并发线程数，一般情况下是逻辑处理器的数量
+        /// 线程控制
         /// </summary>
-        private static int _maxConcurrentThreads;
+        readonly CancellationTokenSource tokenSource;
+
+
+        readonly ConcurrentDictionary<string, BlockingCollection<string>> _callBackQueue = new ConcurrentDictionary<string, BlockingCollection<string>>();
+
+        QueueingBasicConsumer consumer;
 
         /// <summary>
-        /// Channel池
+        /// 接收回调消息的Channel
         /// </summary>
-        private static Dictionary<int, Channel> _channelPool;
+        //IModel _receivechannel;
 
         /// <summary>
-        /// 获取Channel池
+        /// Publish消息的Channel
         /// </summary>
-        private static Dictionary<int, Channel> ChannelPool
-        {
-            get
-            {
-                if (null == _channelPool)
-                {
-                    _channelPool = new Dictionary<int, Channel>();
-                }
-                return _channelPool;
-            }
-        }
+        IModel _publishChannel;
 
-        private static Channel _currentChannel;
-        private static Channel CurrentChannel()
-        {
-            if (null == _currentChannel)
-            {
-                _currentChannel = Channel.Create(_connection, x => x
-                                         .ThroughDirectExchange("rpc")
-                                             .WithRoutingKey("ping"));
-            }
-            return _currentChannel;
-        }
+        string replyTo;
 
         public RpcClient()
         {
             logger = new EmptyLogger();
-            _connection =
-                Connection.Create(x => x
-                .ConnectTo("localhost", "/")
-                .WithCredentials("guest", "guest"));
+            this.tokenSource = new CancellationTokenSource();
+
+            var factory = new ConnectionFactory() { HostName = "localhost" };
+            _connection = factory.CreateConnection();
+            _publishChannel = _connection.CreateModel();
+
+            replyTo = "RpcCallBack_" + Utility.GetFriendlyApplicationName();
+
+
+            ReceiveCallBack();
         }
 
         /// <summary>
-        /// 初始化Channel池
+        /// 接收回调消息，并写入本地队列
         /// </summary>
-        /// <param name="queue">队列名称</param>
-        private void InitChannel(string queue)
+        private void ReceiveCallBack()
         {
-            if (!isInitChannel)
+            for (var i = 0; i < 1; i++)
             {
-                lock (lok)
+                new Thread(new ThreadStart(StartReceive)).Start();
+            }
+        }
+
+        private void StartReceive()
+        {
+            IModel _receivechannel = _connection.CreateModel();
+            consumer = new QueueingBasicConsumer(_receivechannel);
+            _receivechannel.QueueDeclare(replyTo, false, false, false, null);
+            _receivechannel.BasicQos(1, 1, false);
+            _receivechannel.BasicConsume(replyTo, false, consumer);
+            while (!this.tokenSource.IsCancellationRequested)
+            {
+                BasicDeliverEventArgs message = null;
+                consumer.Queue.Dequeue(1000, out message);
+                if (null == message)
                 {
-                    if (isInitChannel)
-                    {
-                        return;
-                    }
-
-                    int coreCount = 0;
-                    foreach (var item in new ManagementObjectSearcher("Select * from Win32_Processor").Get())
-                    {
-                        coreCount += int.Parse(item["NumberOfCores"].ToString());
-                    }
-
-                    _maxConcurrentThreads = coreCount;
-                    for (var i = 0; i < _maxConcurrentThreads; i++)
-                    {
-                        ChannelPool.Add(i, Channel.Create(_connection, x => x
-                                        .ThroughDirectExchange("rpc")
-                                            .WithRoutingKey(queue)));
-                    }
-                    isInitChannel = true;
+                    continue;
                 }
-            }
 
-        }
-
-        /// <summary>
-        /// 从Channel池中取出一个Channel使用
-        /// </summary>
-        /// <param name="queue"></param>
-        /// <returns>返回一个Channel</returns>
-        private Channel GetChannel(string queue)
-        {
-            if (!isInitChannel)
-            {
-                InitChannel(queue);
+                var bodyString = Encoding.UTF8.GetString(message.Body);
+                var props = message.BasicProperties;
+                if (_callBackQueue.ContainsKey(props.CorrelationId))
+                    _callBackQueue[props.CorrelationId].Add(bodyString);
+                _receivechannel.BasicAck(message.DeliveryTag, false);
             }
-            Channel channel = null;
-            if (null != ChannelPool && ChannelPool.Count > 0)
-            {
-                ChannelPool.TryGetValue(new Random().Next(_maxConcurrentThreads), out channel);
-            }
-
-            return channel;
         }
 
         public TMessage Call<TMessage>(string serviceId, string interfaceId, string method, params object[] p)
         {
-            //  var result = default(TMessage);
-            // string queue = "ping";
-
-            //Channel currentChannel;
-            //ChannelPool.TryGetValue(Thread.CurrentThread.ManagedThreadId, out currentChannel);
-            //if (null == currentChannel)
-            //{
-            //    lock (lok)
-            //    {
-            //        ChannelPool.Add(Thread.CurrentThread.ManagedThreadId, Channel.Create(_connection, x => x
-            //                             .ThroughDirectExchange("rpc")
-            //                                 .WithRoutingKey("ping")));
-            //    }
-            //    Console.WriteLine(Thread.CurrentThread.ManagedThreadId + "不存在，将创建");
-            //    ChannelPool.TryGetValue(Thread.CurrentThread.ManagedThreadId, out currentChannel);
-            //}
-
-            //DictionaryBasedKeyLockEngine manager = new DictionaryBasedKeyLockEngine();
-            //manager.Invoke("", channel => channel.Call<Request, Response>(new Request { Text = "hai" }));
-
-            //var response = ChannelPool[Thread.CurrentThread.ManagedThreadId].Call<Request, Response>(new Request { Text = "hai" });
-
-            //var response = CurrentChannel().Call<Request, Response>(new Request { Text = "hai" });
-            return Current.InternalCall<TMessage>(serviceId, interfaceId, method, p);
-        }
-
-        private TMessage InternalCall<TMessage>(string serviceId, string interfaceId, string method, params object[] p)
-        {
             var result = default(TMessage);
-            string queue = "ping";
-            var response = CurrentChannel().Call<Request, Response>(new Request { Text = "hai" });
-            return result;
-        }
+            string queue = serviceId;
+            if (null == _publishChannel)
+            {
+                _publishChannel = _connection.CreateModel();
+            }
+            if (null != _publishChannel)
+            {
+                string corrId = string.Empty;
+                try
+                {
+                    var localmessage = "hello";
+                    var body = Encoding.UTF8.GetBytes(localmessage);
 
-        private Result<Response> Execute(Channel channel)
-        {
-            return channel.Call<Request, Response>(new Request { Text = "hai" });
+                    var properties = _publishChannel.CreateBasicProperties();
+                    corrId = Guid.NewGuid().ToString();
+                    _callBackQueue.TryAdd(corrId, new BlockingCollection<string>(1));
+                    properties.CorrelationId = corrId;
+                    properties.ContentEncoding = "UTF-8";
+                    properties.ReplyTo = replyTo;
+
+#if DEBUG
+                    //  Stopwatch st = new Stopwatch();
+                    // st.Start();
+#endif
+                    _publishChannel.BasicPublish(string.Empty, queue, properties, body);
+
+                    var stringResult = _callBackQueue[corrId].Take();
+                    //this.logger.DebugFormat(stringResult);
+#if DEBUG
+                    //  st.Stop();
+                    // logger.DebugFormat("Call完成，耗时：" + st.ElapsedMilliseconds);
+#endif
+                }
+                catch (Exception ex)
+                {
+
+                }
+            }
+
+            return result;
         }
 
         public void Excute(string serviceId, string interfaceId, string method, params object[] p)

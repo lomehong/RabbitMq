@@ -74,7 +74,9 @@ namespace TestServer
 
         public override byte[] HandleSimpleCall(bool isRedelivered, IBasicProperties requestProperties, byte[] body, out IBasicProperties replyProperties)
         {
-            return base.HandleSimpleCall(isRedelivered, requestProperties, body, out replyProperties);
+            replyProperties = requestProperties;
+            replyProperties.MessageId = Guid.NewGuid().ToString();
+            return Encoding.UTF8.GetBytes("{result:\"test\",exception:\"\",status:\"00000\"}");
         }
     }
 }

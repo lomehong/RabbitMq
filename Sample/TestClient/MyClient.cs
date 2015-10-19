@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 
 namespace TestClient
 {
@@ -17,35 +18,41 @@ namespace TestClient
     {
         static IConnection _connection;
         static IModel _channel;
-        static Dictionary<string, SimpleRpcClient> _rpcClientDictionary = new Dictionary<string, SimpleRpcClient>();
+        static Dictionary<string, IModel> _rpcClientDictionary = new Dictionary<string, IModel>();
         static SimpleRpcClient _client;
         static object lok = new object();
 
-        private SimpleRpcClient GetRpcClientByQueue(string queue)
+        static IConnection Connection
         {
-            SimpleRpcClient client;
-            _rpcClientDictionary.TryGetValue(queue, out client);
-
-            if (null == client)
+            get
             {
-                client = new SimpleRpcClient(new ConnectionFactory
+                if (null == _connection)
                 {
-                    HostName = "localhost",
-                    UserName = "guest",
-                    Password = "guest",
-                    Port = 5672,
-                    VirtualHost = "/"
-                }.CreateConnection().CreateModel(), queue)
-                {
-                    TimeoutMilliseconds = 4000
-                };
-
-                client.TimedOut += TimedOutHandler;
-                client.Disconnected += DisconnectedHandler;
-
-                _rpcClientDictionary.Add(queue, client);
+                    _connection = new ConnectionFactory
+                    {
+                        HostName = "localhost",
+                        UserName = "guest",
+                        Password = "guest",
+                        Port = 5672,
+                        VirtualHost = "/"
+                    }.CreateConnection();
+                }
+                return _connection;
             }
-            return client;
+        }
+
+        private IModel GetRpcClientByQueue(string queue)
+        {
+            IModel channel;
+            _rpcClientDictionary.TryGetValue(queue, out channel);
+
+            if (null == channel)
+            {
+                channel = Connection.CreateModel();
+
+                _rpcClientDictionary.Add(queue, channel);
+            }
+            return channel;
         }
 
         static IConnection GetConnection
@@ -111,7 +118,15 @@ namespace TestClient
 
             //这里必须上锁，否则在多线程环境下回报“Pipelining of requests forbidden”异常
             lock (lok)
-            GetRpcClientByQueue(queue).Call(Encoding.UTF8.GetBytes("test"));
+            {
+                IModel channel = GetRpcClientByQueue(queue);
+                {
+                    IBasicProperties replyProp;
+                    IBasicProperties prop = channel.CreateBasicProperties();
+                    prop.ContentEncoding = "UTF-8";
+                    MyRpcClient.Current( new MyRpcClient(channel, queue).Call(prop, Encoding.UTF8.GetBytes("test"), out replyProp);
+                }
+            }
         }
     }
 }
