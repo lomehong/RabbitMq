@@ -23,16 +23,19 @@ namespace RabbitMq.Rpc
         /// </summary>
         private readonly ILogger logger = null;
 
+        /// <summary>
+        /// RabbitMq连接
+        /// </summary>
         private static IConnection _connection = null;
-
-        private static object lok = new object();
 
         /// <summary>
         /// 线程控制
         /// </summary>
         readonly CancellationTokenSource tokenSource;
 
-
+        /// <summary>
+        /// 存放回调消息的本地非阻塞队列
+        /// </summary>
         readonly ConcurrentDictionary<string, BlockingCollection<string>> _callBackQueue = new ConcurrentDictionary<string, BlockingCollection<string>>();
 
 
@@ -60,10 +63,12 @@ namespace RabbitMq.Rpc
                 UserName = rabbitMqConfig.UserName,
                 Password = rabbitMqConfig.Password,
                 Port = rabbitMqConfig.Port,
-                VirtualHost = rabbitMqConfig.VirtualHost
+                VirtualHost = rabbitMqConfig.VirtualHost,
+                AutomaticRecoveryEnabled = true,
+                TopologyRecoveryEnabled = true
             };
             _connection = factory.CreateConnection();
-            
+
 
             replyTo = "RpcCallBack_" + Utility.GetFriendlyApplicationName();
 
@@ -82,12 +87,16 @@ namespace RabbitMq.Rpc
             }
         }
 
+        /// <summary>
+        /// 开始接收回调消息
+        /// </summary>
         private void StartReceive()
         {
             IModel _receivechannel = _connection.CreateModel();
-            QueueingBasicConsumer consumer = new QueueingBasicConsumer(_receivechannel);
+
             _receivechannel.QueueDeclare(replyTo, false, false, false, null);
-            _receivechannel.BasicQos(0, 1, false);
+            _receivechannel.BasicQos(0, 10, false);
+            QueueingBasicConsumer consumer = new QueueingBasicConsumer(_receivechannel);
             _receivechannel.BasicConsume(replyTo, false, consumer);
             while (!this.tokenSource.IsCancellationRequested)
             {
@@ -97,16 +106,79 @@ namespace RabbitMq.Rpc
                     continue;
                 }
 
-                var bodyString = Encoding.UTF8.GetString(message.Body);
-                var props = message.BasicProperties;
-                if (_callBackQueue.ContainsKey(props.CorrelationId))
-                    _callBackQueue[props.CorrelationId].Add(bodyString);
-                _receivechannel.BasicAck(message.DeliveryTag, false);
+                string corrdId = string.Empty;
+
+                try
+                {
+                    var bodyString = Encoding.UTF8.GetString(message.Body);                    
+                    var props = message.BasicProperties;
+
+                    corrdId = props.CorrelationId;
+
+                    if (_callBackQueue.ContainsKey(corrdId))
+                        _callBackQueue[corrdId].Add(bodyString);
+                }
+                catch (Exception ex)
+                {
+                    this.logger.Error(ex.Message);
+                }
+                finally
+                {
+                    try
+                    {
+                        _receivechannel.BasicAck(message.DeliveryTag, false);
+                    }
+                    catch(Exception e1)
+                    {
+                        this.logger.Error(e1.Message);
+                    }
+
+                    BlockingCollection<string> bq = null;
+                    if (!string.IsNullOrEmpty(corrdId))
+                    {
+                        _callBackQueue.TryRemove(corrdId, out bq);
+                    }
+                }
+
             }
+
+            //var consumer = new EventingBasicConsumer(_receivechannel);
+            //consumer.Received += (c, result) =>
+            //{
+            //    string corrdId = string.Empty;
+            //    try
+            //    {
+            //        if (null == c || result == null)
+            //        {
+            //            return;
+            //        }
+            //        var props = result.BasicProperties;
+            //        corrdId = props.CorrelationId;
+
+            //        var bodyString = Encoding.UTF8.GetString(result.Body);
+            //        if (_callBackQueue.ContainsKey(props.CorrelationId))
+            //            _callBackQueue[props.CorrelationId].Add(bodyString);
+            //        _receivechannel.BasicAck(result.DeliveryTag, false);
+
+            //    }
+            //    catch (Exception ex)
+            //    {
+            //        this.logger.Error(ex.Message);
+            //    }
+            //    finally
+            //    {
+            //        BlockingCollection<string> bq = null;
+            //        _callBackQueue.TryRemove(corrdId, out bq);
+            //    }
+            //};
+            //_receivechannel.BasicConsume(replyTo, false, consumer);
         }
+
+
 
         public TMessage Call<TMessage>(string serviceId, string interfaceId, string method, params object[] p)
         {
+            bool iserror = false;
             var result = default(TMessage);
             string queue = serviceId;
             if (null == _publishChannel)
@@ -121,7 +193,7 @@ namespace RabbitMq.Rpc
                 try
                 {
                     var localmessage = "hello";
-                    byte[] body = new byte[1024 * 2];// Encoding.UTF8.GetBytes(localmessage);
+                    byte[] body = new byte[1024];// Encoding.UTF8.GetBytes(localmessage);
 
                     var properties = _publishChannel.CreateBasicProperties();
                     corrId = Guid.NewGuid().ToString();
@@ -152,7 +224,17 @@ namespace RabbitMq.Rpc
                 }
                 catch (Exception ex)
                 {
-
+                    this.logger.Error(ex.Message);
+                    iserror = true;
+                }
+                finally
+                {
+                    BlockingCollection<string> bq = null;
+                    if (iserror)
+                    {
+                        this.logger.Debug(corrId);
+                    }
+                    _callBackQueue.TryRemove(corrId, out bq);
                 }
             }
 

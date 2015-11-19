@@ -29,7 +29,7 @@ namespace RabbitMq.Client
             logger = new EmptyLogger();
 
             _rpcClient = new RpcClient();
-            int threadCount = 2;// Environment.ProcessorCount;
+            int threadCount = 20;// Environment.ProcessorCount;
 
             if (args.Length > 0)
             {

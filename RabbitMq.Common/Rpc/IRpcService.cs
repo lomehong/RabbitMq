@@ -13,5 +13,9 @@ namespace RabbitMq.Common.Rpc
     /// </summary>
 	public interface IRpcService
     {
+        /// <summary>
+        /// 启动服务
+        /// </summary>
+        void StartService();
     }
 }
