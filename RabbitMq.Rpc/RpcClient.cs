@@ -110,7 +110,7 @@ namespace RabbitMq.Rpc
 
                 try
                 {
-                    var bodyString = Encoding.UTF8.GetString(message.Body);                    
+                    var bodyString = Encoding.UTF8.GetString(message.Body);
                     var props = message.BasicProperties;
 
                     corrdId = props.CorrelationId;
@@ -120,7 +120,13 @@ namespace RabbitMq.Rpc
                 }
                 catch (Exception ex)
                 {
-                    this.logger.Error(ex.Message);
+                    this.logger.Error("StartReceive:" + ex.Message);
+
+                    BlockingCollection<string> bq = null;
+                    if (!string.IsNullOrEmpty(corrdId))
+                    {
+                        _callBackQueue.TryRemove(corrdId, out bq);
+                    }
                 }
                 finally
                 {
@@ -128,15 +134,9 @@ namespace RabbitMq.Rpc
                     {
                         _receivechannel.BasicAck(message.DeliveryTag, false);
                     }
-                    catch(Exception e1)
+                    catch (Exception e1)
                     {
                         this.logger.Error(e1.Message);
-                    }
-
-                    BlockingCollection<string> bq = null;
-                    if (!string.IsNullOrEmpty(corrdId))
-                    {
-                        _callBackQueue.TryRemove(corrdId, out bq);
                     }
                 }
 
@@ -187,8 +187,6 @@ namespace RabbitMq.Rpc
             }
             if (null != _publishChannel)
             {
-                //Stopwatch st = new Stopwatch();
-                //st.Start();
                 string corrId = string.Empty;
                 try
                 {
@@ -198,29 +196,15 @@ namespace RabbitMq.Rpc
                     var properties = _publishChannel.CreateBasicProperties();
                     corrId = Guid.NewGuid().ToString();
                     _callBackQueue.TryAdd(corrId, new BlockingCollection<string>(1));
-                    //st.Stop();
-                    //this.logger.Debug("Add" + st.ElapsedMilliseconds);
-                    //st.Start();
+
                     properties.CorrelationId = corrId;
                     properties.ContentEncoding = "UTF-8";
                     properties.ReplyTo = replyTo;
 
-#if DEBUG
-                    //  Stopwatch st = new Stopwatch();
-                    // st.Start();
-#endif
                     _publishChannel.BasicPublish(string.Empty, queue, properties, body);
-                    //st.Stop();
-                    //this.logger.Debug("Publish" + st.ElapsedMilliseconds);
-                    //st.Start();
-                    var stringResult = _callBackQueue[corrId].Take();
-                    //st.Stop();
-                    //this.logger.Debug("Take" + st.ElapsedMilliseconds);
-                    //this.logger.DebugFormat(stringResult);
-#if DEBUG
-                    //  st.Stop();
-                    // logger.DebugFormat("Call完成，耗时：" + st.ElapsedMilliseconds);
-#endif
+
+                    string stringResult = string.Empty;
+                    _callBackQueue[corrId].TryTake(out stringResult, 1000, this.tokenSource.Token);
                 }
                 catch (Exception ex)
                 {
